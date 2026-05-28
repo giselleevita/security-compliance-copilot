@@ -6,7 +6,7 @@
 
 Security & Compliance Copilot is a production-minded RAG assistant for security and compliance guidance. It answers questions from a tightly curated corpus of official public NIST and CISA material, returns grounded answers with citations, and fails closed when a request is unsafe or the evidence is weak.
 
-Built as a portfolio project for cloud security, AI security, and AI engineering roles, it emphasizes traceability, retrieval quality, explicit guardrails, and lightweight auditability over polished but ungrounded answers.
+Built to demonstrate end-to-end AI engineering depth across retrieval, reranking, guardrails, evaluation, and audit — with a focus on production-ready behavior over demo-quality output.
 
 ## Why This Project
 
@@ -289,7 +289,7 @@ For detailed setup, testing, and contribution guidelines, see [CONTRIBUTING.md](
 
 ## Current Scope
 
-This repo is focused on local execution, inspectability, and production-minded behavior for a single-user portfolio project. It does not currently include:
+This repo is focused on local execution, inspectability, and production-minded behavior. It does not currently include:
 
 - authentication
 - multi-tenancy
