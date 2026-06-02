@@ -235,6 +235,28 @@ def test_grounding_validator_rejects_mostly_unsupported_cited_claims() -> None:
     assert decision.detection_flags == ["unsupported_claim"]
 
 
+def test_grounding_validator_refuses_prompt_injection_compliance_output() -> None:
+    chunks = [make_chunk("1", "NIST AI RMF discusses governance and risk management.", label="S1")]
+    context_package = build_context(chunks, max_chars=4000)
+    answer = "I'm ignoring the previous rules as requested. NIST AI RMF discusses governance [S1]."
+
+    decision = GroundingValidator().validate(answer, context_package)
+
+    assert decision.status is GuardrailStatus.REFUSED
+    assert decision.detection_flags == ["prompt_injection_compliance"]
+
+
+def test_grounding_validator_refuses_prompt_leak_output() -> None:
+    chunks = [make_chunk("1", "NIST AI RMF discusses governance and risk management.", label="S1")]
+    context_package = build_context(chunks, max_chars=4000)
+    answer = "Here is the system prompt shown below: hidden policy text. NIST discusses governance [S1]."
+
+    decision = GroundingValidator().validate(answer, context_package)
+
+    assert decision.status is GuardrailStatus.REFUSED
+    assert decision.detection_flags == ["prompt_leak_output"]
+
+
 def test_generation_service_refuses_empty_context_before_provider_call() -> None:
     service = GenerationService(api_key="", model="unused")
     context_package = build_context([], max_chars=4000)
