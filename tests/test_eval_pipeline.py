@@ -131,3 +131,37 @@ def test_eval_metrics_fail_when_expected_retrieval_is_missing(tmp_path: Path) ->
     assert results[0]["retrieval_hit_rate"] == 0.0
     assert results[0]["passed"] is False
     assert summary["overall"]["passed"] == 0
+
+
+def test_eval_pipeline_records_provider_errors_without_crashing(tmp_path: Path) -> None:
+    questions = [
+        {
+            "id": "provider_error",
+            "category": "safe_answer",
+            "question": "What does the Govern function cover?",
+            "expected_guardrail_status": "ok",
+            "expected_sources": [{"framework": "NIST_AI_RMF", "title_contains": "risk management framework"}],
+            "min_retrieval_hit_rate": 1.0,
+            "min_mrr": 1.0,
+            "min_citation_precision": 1.0,
+            "min_faithfulness": 0.25,
+        }
+    ]
+    questions_path = tmp_path / "questions.json"
+    questions_path.write_text(json.dumps(questions), encoding="utf-8")
+
+    class FailingChatService:
+        def answer_question(self, question: str) -> ChatResponse:
+            raise RuntimeError("provider quota exceeded")
+
+    results, summary = run_evaluation(
+        questions_path=questions_path,
+        results_path=tmp_path / "results.json",
+        chat_service=FailingChatService(),
+        retrieval_service=FakeRetrievalService(),
+    )
+
+    assert results[0]["guardrail_status"] == "error"
+    assert "provider quota exceeded" in results[0]["error"]
+    assert results[0]["passed"] is False
+    assert summary["overall"]["passed"] == 0
