@@ -1,4 +1,9 @@
+import logging
+from typing import Any
+
 from app.models.source import SourceChunk
+
+logger = logging.getLogger(__name__)
 
 
 TRUSTED_FRAMEWORK_BONUSES = {
@@ -11,8 +16,10 @@ TRUSTED_FRAMEWORK_BONUSES = {
 TRUSTED_PUBLISHER_KEYWORDS = ("nist", "cisa", "ftc", "fbi", "nsa")
 
 
-class SimpleReranker:
-    def rerank(self, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]:
+class MetadataBoostingReranker:
+    """Fallback scorer that is intentionally metadata-only, not semantic reranking."""
+
+    def rerank(self, query: str, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]:
         scored = [self._with_rerank_score(chunk) for chunk in chunks]
         ranked = sorted(
             scored,
@@ -40,3 +47,39 @@ class SimpleReranker:
 
         rerank_score = round(chunk.score + metadata_bonus, 4)
         return chunk.model_copy(update={"rerank_score": rerank_score})
+
+
+class CrossEncoderReranker:
+    def __init__(
+        self,
+        model_name: str,
+        model: Any | None = None,
+        fallback: MetadataBoostingReranker | None = None,
+    ) -> None:
+        self.model_name = model_name
+        self._model = model
+        self.fallback = fallback or MetadataBoostingReranker()
+
+    @property
+    def model(self) -> Any:
+        if self._model is None:
+            from sentence_transformers import CrossEncoder
+
+            logger.info("Loading cross-encoder reranker: %s", self.model_name)
+            self._model = CrossEncoder(self.model_name)
+        return self._model
+
+    def rerank(self, query: str, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]:
+        if not chunks:
+            return []
+        pairs = [(query, chunk.text) for chunk in chunks]
+        try:
+            raw_scores = self.model.predict(pairs)
+        except Exception:
+            logger.exception("Cross-encoder reranking failed; using metadata boosting fallback")
+            return self.fallback.rerank(query=query, chunks=chunks, limit=limit)
+
+        scored: list[SourceChunk] = []
+        for chunk, raw_score in zip(chunks, raw_scores):
+            scored.append(chunk.model_copy(update={"rerank_score": round(float(raw_score), 4)}))
+        return sorted(scored, key=lambda chunk: chunk.rerank_score or 0.0, reverse=True)[:limit]

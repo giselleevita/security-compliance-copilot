@@ -1,7 +1,7 @@
 import re
 
 from app.generation.context_builder import build_context
-from app.generation.service import ChatService, GenerationService
+from app.generation.service import ChatService, GenerationService, GroundingValidator
 from app.guardrails.rules import GuardrailEngine
 from app.models.chat import GuardrailStatus
 from app.models.source import SourceChunk
@@ -43,7 +43,7 @@ class StubRetrievalService:
 
 
 class StubReranker:
-    def rerank(self, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]:
+    def rerank(self, query: str, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]:
         return chunks[:limit]
 
 
@@ -87,6 +87,35 @@ def test_generation_service_strips_hallucinated_citations() -> None:
     assert sanitized == "Grounded answer [S1]."
 
 
+def test_groq_generation_uses_openai_compatible_chat_client() -> None:
+    class FakeChoice:
+        message = type("Message", (), {"content": "The Govern function sets accountability [S1]."})()
+
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            return type("Response", (), {"choices": [FakeChoice()]})()
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    chunks = [make_chunk("1", "The Govern function sets accountability.", label="S1")]
+    context_package = build_context(chunks, max_chars=4000)
+    service = GenerationService(api_key="", model="llama-3.3-70b-versatile", provider="groq")
+    service.client = FakeClient()
+
+    answer = service.generate("What does Govern cover?", context_package)
+
+    assert answer == "The Govern function sets accountability [S1]."
+    call = service.client.chat.completions.calls[0]
+    assert call["model"] == "llama-3.3-70b-versatile"
+    assert call["temperature"] == 0
+
+
 def test_every_citation_label_used_in_answer_exists_in_sources() -> None:
     chunks = [
         make_chunk("1", "The Govern function sets accountability and oversight."),
@@ -112,7 +141,7 @@ def test_source_labels_are_unique_and_ordered_even_with_bad_input_labels() -> No
             make_chunk("2", "Evidence two", label="S1"),
             make_chunk("3", "Evidence three", label="s001"),
         ],
-        "Supported answer [S1][S2][S3].",
+        "Evidence one [S1]. Evidence two [S2]. Evidence three [S3].",
     )
 
     response = service.answer_question("What is the purpose of NIST AI RMF?")
@@ -126,7 +155,7 @@ def test_source_metadata_is_normalized_and_complete() -> None:
             make_chunk("1", "Evidence one", title="", framework="", url="", label=None),
             make_chunk("2", "Evidence two", title="Doc 2", framework="CISA", url="https://example.com/2"),
         ],
-        "Supported answer [S1][S2].",
+        "Evidence one [S1]. Evidence two [S2].",
     )
 
     response = service.answer_question("What is secure by design in CISA guidance?")
@@ -155,3 +184,19 @@ def test_unsupported_answer_claims_are_detected_by_suite() -> None:
     answer = "NIST requires production-grade GPU memory isolation controls [S1]."
 
     assert answer_claims_supported_by_context(answer, chunks) is False
+
+
+def test_grounding_validator_does_not_split_control_ids_as_sentences() -> None:
+    chunks = [
+        make_chunk(
+            "1",
+            "GOVERN 1.6 involves inventorying AI systems. GOVERN 1.7 involves decommissioning AI systems safely.",
+            label="S1",
+        )
+    ]
+    context_package = build_context(chunks, max_chars=4000)
+    answer = "The Govern function includes GOVERN 1.6 and GOVERN 1.7 activities [S1]."
+
+    decision = GroundingValidator().validate(answer, context_package)
+
+    assert decision.status is GuardrailStatus.OK

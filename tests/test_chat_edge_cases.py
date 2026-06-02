@@ -15,7 +15,7 @@ class StubRetrievalService:
 
 
 class StubReranker:
-    def rerank(self, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]:
+    def rerank(self, query: str, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]:
         return chunks[:limit]
 
 
@@ -53,7 +53,7 @@ def make_chunk(
     )
 
 
-def make_chat_service(chunks: list[SourceChunk], answer: str = "Answer [S1].") -> ChatService:
+def make_chat_service(chunks: list[SourceChunk], answer: str = "Evidence text for 1 [S1].") -> ChatService:
     return ChatService(
         retrieval_service=StubRetrievalService(chunks),
         reranker=StubReranker(),

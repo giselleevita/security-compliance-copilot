@@ -22,11 +22,11 @@ Most demo RAG apps optimize for answer quality first. This project is intentiona
 ## Key Features
 
 - Grounded answers over official public NIST and CISA guidance
-- Hybrid retrieval pipeline with query rewriting, retrieval, reranking, and context building
+- Retrieval pipeline with query rewriting, vector retrieval, cross-encoder reranking, and context building
 - Stable inline citations tied to actual retrieved sources
 - Guardrails for prompt injection, jailbreaks, prompt leaks, and proprietary-text requests
 - JSONL audit logging for every chat request
-- Offline evals for answer, refusal, privacy, and injection behavior
+- Offline evals with retrieval, citation, faithfulness, and refusal metrics
 
 ## What This Demonstrates
 
@@ -136,8 +136,9 @@ pip install -r requirements.txt
 ```
 
 3. Add your API key to `.env`:
-   - For Gemini (default): Add `GEMINI_API_KEY` from https://aistudio.google.com/app/apikey
-   - For OpenAI (alternative): Add `OPENAI_API_KEY` and uncomment OpenAI settings
+   - For Gemini: set `LLM_PROVIDER=gemini` and add `GEMINI_API_KEY` from https://aistudio.google.com/app/apikey
+   - For Groq: set `LLM_PROVIDER=groq` and add `GROQ_API_KEY` from https://console.groq.com/keys
+   - OpenAI remains available for embeddings if you wire `OPENAI_API_KEY` and OpenAI embedding settings.
 
 ## Quick Start
 
@@ -173,6 +174,8 @@ Run the eval set:
 python3.11 evals/run_eval.py
 ```
 
+The `/ingest` API is protected by `INGEST_API_KEY`; local rebuilds can still use `python3.11 scripts/ingest.py`.
+
 ## API
 
 ### `GET /health`
@@ -199,7 +202,13 @@ Example shape:
 }
 ```
 
+### `GET /ready`
+
+Returns `200` only when production-critical runtime dependencies are configured: selected LLM provider key, chat API key, ingest API key, healthy vector store, and a populated index. Otherwise it returns `503` with failed checks.
+
 ### `POST /chat`
+
+In production, set `CHAT_API_KEY` and send it as `x-api-key` on every request. `CHAT_RATE_LIMIT_PER_MINUTE` applies a lightweight per-key/IP limiter.
 
 Request:
 
@@ -232,16 +241,20 @@ Response:
 
 The assistant is intentionally conservative:
 
+- `/chat` can be protected with `CHAT_API_KEY`
+- `/chat` applies configurable per-minute rate limiting
 - answers are grounded only in retrieved local corpus content
 - prompt-injection and jailbreak-style requests are refused
 - requests for system prompts, developer messages, config, secrets, passwords, tokens, and API keys are refused
 - proprietary standards full-text requests are refused
 - broad dump-style requests such as "show all files" or "all documents" fail closed with `insufficient_context`
 - citation labels are sanitized so fabricated citations are removed from generated output
+- post-generation grounding checks fail closed when answers lack citations or cite unsupported claims
 
 ## Security & Compliance
 
 - Retrieval is constrained to a curated local corpus of official public NIST/CISA guidance.
+- Chat requests can require an API key via `CHAT_API_KEY`; ingestion always requires `INGEST_API_KEY`.
 - Prompt injection, jailbreak, and internal prompt/config extraction requests are refused.
 - Proprietary standards full-text requests are refused.
 - Every `/chat` request is logged to `logs/audit.jsonl`.
@@ -276,12 +289,15 @@ Offline evals run through the same service path as `/chat` and write detailed re
 
 Eval categories include:
 
-- `safe`
-- `injection`
-- `privacy`
-- `refuse`
+- `safe_answer`
+- `retrieval_precision`
+- `prompt_injection`
+- `prompt_leak`
+- `privacy_secret`
+- `proprietary_text`
+- `out_of_scope`
 
-Tracked fields include retrieved chunk count, guardrail status, confidence, source frameworks, and answer length.
+Tracked fields include retrieval hit rate, MRR, nDCG@5, citation precision, faithfulness, refusal accuracy, guardrail status, source frameworks, and answer length.
 
 ## Development
 

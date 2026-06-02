@@ -1,5 +1,5 @@
 from app.models.source import SourceChunk
-from app.ranking.reranker import SimpleReranker
+from app.ranking.reranker import CrossEncoderReranker, MetadataBoostingReranker
 from app.retrieval.search import RetrievalService
 
 
@@ -30,8 +30,13 @@ class FakeVectorStore:
         ]
 
 
-def test_reranker_prefers_framework_labeled_chunks() -> None:
-    reranker = SimpleReranker()
+class FakeCrossEncoder:
+    def predict(self, pairs):
+        return [0.1 if "generic" in text else 0.9 for _, text in pairs]
+
+
+def test_cross_encoder_reranker_uses_query_document_scores() -> None:
+    reranker = CrossEncoderReranker(model_name="unused", model=FakeCrossEncoder())
     chunks = [
         SourceChunk(
             chunk_id="1",
@@ -61,10 +66,43 @@ def test_reranker_prefers_framework_labeled_chunks() -> None:
         ),
     ]
 
-    reranked = reranker.rerank(chunks, limit=2)
+    reranked = reranker.rerank(query="framework guidance", chunks=chunks, limit=2)
     assert reranked[0].chunk_id == "2"
-    assert reranked[0].rerank_score is not None
-    assert reranked[0].rerank_score >= reranked[1].rerank_score
+    assert reranked[0].rerank_score == 0.9
+
+
+def test_metadata_boosting_reranker_is_explicit_fallback() -> None:
+    reranker = MetadataBoostingReranker()
+    chunks = [
+        SourceChunk(
+            chunk_id="1",
+            text="generic",
+            source_id="s1",
+            title="Doc 1",
+            url="a",
+            publisher="Publisher A",
+            source_type="txt",
+            framework="general",
+            section="Introduction",
+            chunk_index=0,
+            score=0.55,
+        ),
+        SourceChunk(
+            chunk_id="2",
+            text="framework",
+            source_id="s2",
+            title="Doc 2",
+            url="b",
+            publisher="Publisher B",
+            source_type="md",
+            framework="NIST",
+            section="Protect",
+            chunk_index=1,
+            score=0.53,
+        ),
+    ]
+    reranked = reranker.rerank(query="framework guidance", chunks=chunks, limit=2)
+    assert reranked[0].chunk_id == "2"
 
 
 def test_retrieval_service_uses_embeddings_and_filters() -> None:
@@ -91,3 +129,16 @@ def test_retrieval_service_can_filter_by_score() -> None:
         min_score=0.85,
     )
     assert result == []
+
+
+def test_seeded_retrieval_fixture_catches_wrong_expected_framework() -> None:
+    service = RetrievalService(
+        vector_store=FakeVectorStore(),
+        embedding_client=FakeEmbeddingClient(),
+        top_k=3,
+    )
+
+    result = service.retrieve("What does NIST Protect mean?", filters={"framework": "NIST"})
+
+    assert result[0].framework == "NIST"
+    assert result[0].framework != "CISA"

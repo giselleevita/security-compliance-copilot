@@ -1,10 +1,10 @@
 import logging
-from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 
 from app.core.audit import utc_now_iso8601, write_audit_event
 from app.core.dependencies import get_chat_service
+from app.core.security import enforce_chat_rate_limit, require_chat_api_key
 from app.models.chat import ChatRequest, ChatResponse
 
 router = APIRouter(tags=["chat"])
@@ -13,8 +13,10 @@ logger = logging.getLogger(__name__)
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest, raw_request: Request) -> ChatResponse:
+    identity = require_chat_api_key(raw_request)
+    enforce_chat_rate_limit(raw_request, identity)
     service = get_chat_service()
-    request_id = raw_request.headers.get("x-request-id") or str(uuid4())
+    request_id = getattr(raw_request.state, "request_id", raw_request.headers.get("x-request-id", "unknown-request"))
     try:
         if hasattr(service, "answer_question_with_trace"):
             response, trace = service.answer_question_with_trace(request.question, request.filters)
@@ -44,7 +46,8 @@ def chat(request: ChatRequest, raw_request: Request) -> ChatResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Runtime /chat error")
+        raise HTTPException(status_code=503, detail="Chat service is unavailable.") from exc
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.exception("Unhandled /chat error")
-        raise HTTPException(status_code=500, detail=str(exc) or "Internal server error") from exc
+        raise HTTPException(status_code=500, detail="Internal server error") from exc

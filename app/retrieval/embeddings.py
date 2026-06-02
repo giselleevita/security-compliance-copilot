@@ -1,5 +1,4 @@
 import logging
-from sentence_transformers import SentenceTransformer
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +31,8 @@ class OpenAIEmbeddingClient:
 
 class LocalEmbeddingClient:
     def __init__(self, model: str = "all-MiniLM-L6-v2") -> None:
+        from sentence_transformers import SentenceTransformer
+
         self.model_name = model
         logger.info("Loading local embedding model: %s", self.model_name)
         self.model = SentenceTransformer(self.model_name)
