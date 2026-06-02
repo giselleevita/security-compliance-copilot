@@ -44,6 +44,17 @@ class Reranker(Protocol):
 
 class GroundingValidator:
     def validate(self, answer: str, context_package: ContextPackage) -> GuardrailDecision:
+        unsafe_output = self._detect_unsafe_output(answer)
+        if unsafe_output:
+            return GuardrailDecision(
+                status=GuardrailStatus.REFUSED,
+                message=(
+                    "I cannot help with bypassing safeguards, exposing internal prompts/configuration, or "
+                    "extracting sensitive content. Ask a specific question about public NIST or CISA guidance."
+                ),
+                detection_flags=unsafe_output,
+            )
+
         if not context_package.chunks or not context_package.context_text.strip():
             return GuardrailDecision(
                 status=GuardrailStatus.INSUFFICIENT_CONTEXT,
@@ -147,6 +158,60 @@ class GroundingValidator:
             for token in re.findall(r"[a-z0-9][a-z0-9-]{2,}", text.lower())
             if token not in STOP_WORDS
         ]
+
+    def _detect_unsafe_output(self, answer: str) -> list[str]:
+        normalized = re.sub(r"[^a-z0-9]+", " ", answer.lower())
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        compact = normalized.replace(" ", "")
+        flags: set[str] = set()
+
+        if any(
+            pattern in normalized or pattern in compact
+            for pattern in (
+                "i am ignoring previous instructions",
+                "i m ignoring previous instructions",
+                "i am ignoring the previous rules",
+                "i m ignoring the previous rules",
+                "ignorepreviousinstructions",
+                "ignoringpreviousinstructions",
+                "ignoringthepreviousrules",
+            )
+        ):
+            flags.add("prompt_injection_compliance")
+
+        prompt_leak_patterns = (
+            "here is the developer instruction",
+            "here are the developer instructions",
+            "here is the developer message",
+            "here is the hidden prompt",
+            "here is the internal prompt",
+            "here is the system message",
+            "here is the system prompt",
+            "system prompt revealed",
+            "developer message revealed",
+            "hidden prompt revealed",
+            "internal prompt revealed",
+        )
+        if any(pattern in normalized for pattern in prompt_leak_patterns):
+            flags.add("prompt_leak_output")
+
+        if any(
+            pattern in normalized
+            for pattern in (
+                "api key is",
+                "groq api key is",
+                "password is",
+                "token is",
+                "environment secret is",
+                "here is the api key",
+                "here are the api keys",
+                "here is the password",
+                "here is the token",
+            )
+        ):
+            flags.add("sensitive_content_output")
+
+        return sorted(flags)
 
 
 class GenerationService:
