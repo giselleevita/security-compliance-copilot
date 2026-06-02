@@ -200,3 +200,48 @@ def test_grounding_validator_does_not_split_control_ids_as_sentences() -> None:
     decision = GroundingValidator().validate(answer, context_package)
 
     assert decision.status is GuardrailStatus.OK
+
+
+def test_grounding_validator_rejects_missing_citations() -> None:
+    chunks = [make_chunk("1", "NIST AI RMF discusses accountability and oversight.", label="S1")]
+    context_package = build_context(chunks, max_chars=4000)
+    answer = "NIST AI RMF discusses accountability and oversight."
+
+    decision = GroundingValidator().validate(answer, context_package)
+
+    assert decision.status is GuardrailStatus.INSUFFICIENT_CONTEXT
+    assert decision.detection_flags == ["missing_citation"]
+
+
+def test_grounding_validator_rejects_invalid_citation_labels() -> None:
+    chunks = [make_chunk("1", "NIST AI RMF discusses accountability and oversight.", label="S1")]
+    context_package = build_context(chunks, max_chars=4000)
+    answer = "NIST AI RMF discusses accountability and oversight [S9]."
+
+    decision = GroundingValidator().validate(answer, context_package)
+
+    assert decision.status is GuardrailStatus.INSUFFICIENT_CONTEXT
+    assert decision.detection_flags == ["invalid_citation"]
+
+
+def test_grounding_validator_rejects_mostly_unsupported_cited_claims() -> None:
+    chunks = [make_chunk("1", "NIST AI RMF discusses governance and risk management.", label="S1")]
+    context_package = build_context(chunks, max_chars=4000)
+    answer = "NIST requires quantum-safe satellite isolation controls [S1]."
+
+    decision = GroundingValidator().validate(answer, context_package)
+
+    assert decision.status is GuardrailStatus.INSUFFICIENT_CONTEXT
+    assert decision.detection_flags == ["unsupported_claim"]
+
+
+def test_generation_service_refuses_empty_context_before_provider_call() -> None:
+    service = GenerationService(api_key="", model="unused")
+    context_package = build_context([], max_chars=4000)
+
+    try:
+        service.generate("What does NIST say?", context_package)
+    except ValueError as exc:
+        assert "without retrieved context" in str(exc)
+    else:
+        raise AssertionError("Expected empty context to fail before provider call")
