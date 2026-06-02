@@ -25,6 +25,33 @@ PROPRIETARY_FRAMEWORKS = [
     "paid standard",
     "proprietary standard",
 ]
+PROMPT_LEAK_TERMS = [
+    "chain of thought",
+    "developer instruction",
+    "developer instructions",
+    "developer message",
+    "hidden instruction",
+    "hidden instructions",
+    "hidden policy",
+    "hidden prompt",
+    "initial prompt",
+    "initialization text",
+    "instruction hierarchy",
+    "internal instruction",
+    "internal instructions",
+    "internal policy",
+    "internal prompt",
+    "policy text",
+    "private instruction",
+    "private instructions",
+    "reasoning trace",
+    "scratchpad",
+    "system instruction",
+    "system instructions",
+    "system message",
+    "system prompt",
+]
+PROMPT_LEAK_ACTIONS = ["display", "dump", "print", "reveal", "show", "tell", "what is", "write"]
 UNSAFE_PATTERNS: list[tuple[str, str]] = [
     ("ignore previous instructions", "prompt_injection_attempt"),
     ("ignore previous rules", "prompt_injection_attempt"),
@@ -43,6 +70,12 @@ UNSAFE_PATTERNS: list[tuple[str, str]] = [
     ("initialization text", "prompt_leak_request"),
     ("developer message", "prompt_leak_request"),
     ("developer instructions", "prompt_leak_request"),
+    ("system message", "prompt_leak_request"),
+    ("system instructions", "prompt_leak_request"),
+    ("instruction hierarchy", "prompt_leak_request"),
+    ("chain of thought", "prompt_leak_request"),
+    ("scratchpad", "prompt_leak_request"),
+    ("reasoning trace", "prompt_leak_request"),
     ("bypass rules", "guardrail_bypass_attempt"),
     ("bypass safeguards", "guardrail_bypass_attempt"),
     ("disable guardrails", "guardrail_bypass_attempt"),
@@ -52,6 +85,25 @@ UNSAFE_PATTERNS: list[tuple[str, str]] = [
     ("prompt injection", "prompt_injection_attempt"),
     ("internal documents", "internal_document_request"),
     ("private documents", "private_document_request"),
+]
+BROAD_ACTION_PATTERNS = ["display", "dump", "enumerate", "export", "list", "print", "show"]
+BROAD_SCOPE_PATTERNS = [
+    "all chunk",
+    "all citation",
+    "all document",
+    "all evidence",
+    "all file",
+    "all retrieved",
+    "all source",
+    "entire corpus",
+    "every chunk",
+    "every citation",
+    "every document",
+    "every source",
+    "full corpus",
+    "raw context",
+    "retrieved context",
+    "whole corpus",
 ]
 BROAD_PATTERNS: list[tuple[str, str]] = [
     ("dump all files", "broad_data_dump_request"),
@@ -82,7 +134,11 @@ SENSITIVE_TERM_PATTERNS = [
     "database credential",
     "env",
     "environment secret",
+    "environment variable",
+    ".env",
     "secret",
+    "key",
+    "keys",
     "password",
     "token",
     "api key",
@@ -205,6 +261,12 @@ class GuardrailEngine:
     def _detect_unsafe_flags(self, normalized_question: str) -> list[str]:
         flags = [flag for pattern, flag in UNSAFE_PATTERNS if pattern in normalized_question]
 
+        asks_for_prompt_leak = any(term in normalized_question for term in PROMPT_LEAK_TERMS) and any(
+            action in normalized_question for action in PROMPT_LEAK_ACTIONS
+        )
+        if asks_for_prompt_leak:
+            flags.append("prompt_leak_request")
+
         asks_for_sensitive_content = any(term in normalized_question for term in SENSITIVE_TERM_PATTERNS) and any(
             action in normalized_question for action in SENSITIVE_ACTION_PATTERNS
         )
@@ -224,7 +286,13 @@ class GuardrailEngine:
         return sorted(set(flags))
 
     def _detect_broad_flags(self, normalized_question: str) -> list[str]:
-        return sorted({flag for pattern, flag in BROAD_PATTERNS if pattern in normalized_question})
+        flags = {flag for pattern, flag in BROAD_PATTERNS if pattern in normalized_question}
+        asks_for_broad_export = any(action in normalized_question for action in BROAD_ACTION_PATTERNS) and any(
+            scope in normalized_question for scope in BROAD_SCOPE_PATTERNS
+        )
+        if asks_for_broad_export:
+            flags.add("broad_data_dump_request")
+        return sorted(flags)
 
     def _detect_recency_flags(self, normalized_question: str) -> list[str]:
         return sorted({flag for pattern, flag in RECENCY_PATTERNS if pattern in normalized_question})
