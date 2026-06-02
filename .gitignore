@@ -25,6 +25,10 @@ env/
 .coverage
 htmlcov/
 .tox/
+evals/results.json
+
+# Runtime vector indexes
+data/chroma/
 
 # IDE
 .vscode/

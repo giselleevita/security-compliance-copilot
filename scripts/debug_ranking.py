@@ -2,7 +2,8 @@ import argparse
 import textwrap
 
 from app.core.dependencies import get_retrieval_service
-from app.ranking.reranker import SimpleReranker
+from app.core.dependencies import get_settings
+from app.ranking.reranker import CrossEncoderReranker
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,11 +35,11 @@ def print_chunks(title: str, chunks: list) -> None:
 def main() -> None:
     args = build_parser().parse_args()
     retrieval_service = get_retrieval_service()
-    reranker = SimpleReranker()
+    reranker = CrossEncoderReranker(model_name=get_settings().reranker_model)
     rewritten_query = retrieval_service.rewrite_question(args.query)
 
     retrieved = retrieval_service.retrieve(args.query, top_k=args.top_k)
-    reranked = reranker.rerank(retrieved, limit=args.top_n)
+    reranked = reranker.rerank(query=rewritten_query, chunks=retrieved, limit=args.top_n)
 
     print(f"Query: {args.query}\n")
     print(f"Rewritten query: {rewritten_query}\n")

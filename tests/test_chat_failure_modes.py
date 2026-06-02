@@ -11,8 +11,8 @@ def test_chat_returns_runtime_error_detail(monkeypatch) -> None:
     monkeypatch.setattr("app.api.chat.get_chat_service", lambda: FailingRuntimeService())
     client = TestClient(app)
     response = client.post("/chat", json={"question": "What does NIST recommend?"})
-    assert response.status_code == 500
-    assert response.json()["detail"] == "OPENAI_API_KEY is required for chat generation."
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Chat service is unavailable."
 
 
 def test_chat_returns_unhandled_exception_detail(monkeypatch) -> None:
@@ -36,4 +36,4 @@ def test_chat_returns_fallback_for_unknown_exception(monkeypatch) -> None:
     client = TestClient(app)
     response = client.post("/chat", json={"question": "What does NIST recommend?"})
     assert response.status_code == 500
-    assert response.json()["detail"] == "Unexpected chain failure"
+    assert response.json()["detail"] == "Internal server error"

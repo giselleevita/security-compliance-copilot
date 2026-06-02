@@ -92,7 +92,11 @@ def benchmark_reranking(queries: list[dict[str, str]], iterations: int) -> list[
             reranked: list[Any] = []
             if not error:
                 try:
-                    reranked = chat_service.reranker.rerank(retrieved, limit=chat_service.rerank_k)
+                    reranked = chat_service.reranker.rerank(
+                        query=query["question"],
+                        chunks=retrieved,
+                        limit=chat_service.rerank_k,
+                    )
                 except Exception as exc:
                     error = str(exc)
             elapsed_ms = (time.perf_counter() - started) * 1000

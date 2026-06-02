@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -19,15 +20,9 @@ from app.core.dependencies import (
 configure_logging()
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title=get_settings().app_name)
-app.add_middleware(RequestLoggingMiddleware)
-app.include_router(health_router)
-app.include_router(chat_router)
-app.include_router(ingest_router)
 
-
-@app.on_event("startup")
-def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     logger.info("Starting up: pre-loading embedding model and vector store")
     try:
         logger.info("Pre-loading embedding model...")
@@ -55,6 +50,14 @@ def startup_event() -> None:
     except Exception:
         logger.exception("Startup initialization failed")
         raise
+    yield
+
+
+app = FastAPI(title=get_settings().app_name, lifespan=lifespan)
+app.add_middleware(RequestLoggingMiddleware)
+app.include_router(health_router)
+app.include_router(chat_router)
+app.include_router(ingest_router)
 
 
 @app.get("/", response_class=HTMLResponse)
