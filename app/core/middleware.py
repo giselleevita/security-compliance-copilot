@@ -11,13 +11,15 @@ logger = logging.getLogger(__name__)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        request_id = str(uuid.uuid4())
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.request_id = request_id
         start_time = time.perf_counter()
 
         content_length = request.headers.get("content-length")
         query_length = int(content_length) if content_length else 0
 
         response = await call_next(request)
+        response.headers["x-request-id"] = request_id
 
         latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
         status_code = response.status_code

@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.generation.service import ChatService, GenerationService
 from app.guardrails.rules import GuardrailEngine
 from app.ingestion.pipeline import IngestionPipeline
-from app.ranking.reranker import SimpleReranker
+from app.ranking.reranker import CrossEncoderReranker
 from app.retrieval.embeddings import LocalEmbeddingClient
 from app.retrieval.search import RetrievalService
 from app.retrieval.vectorstore import ChromaVectorStore
@@ -29,7 +29,8 @@ def get_vector_store() -> ChromaVectorStore:
 
 @lru_cache
 def get_embedding_client() -> LocalEmbeddingClient:
-    return LocalEmbeddingClient(model="sentence-transformers/all-mpnet-base-v2")
+    settings = get_settings()
+    return LocalEmbeddingClient(model=settings.local_embedding_model)
 
 
 @lru_cache
@@ -45,9 +46,15 @@ def get_retrieval_service() -> RetrievalService:
 @lru_cache
 def get_generation_service() -> GenerationService:
     settings = get_settings()
+    provider = settings.llm_provider.lower()
+    model = settings.groq_chat_model if provider == "groq" else settings.gemini_chat_model
+    api_key = settings.groq_api_key if provider == "groq" else settings.gemini_api_key
+    base_url = settings.groq_base_url if provider == "groq" else ""
     return GenerationService(
-        api_key=settings.gemini_api_key,
-        model="gemini-2.0-flash",
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        provider=provider,
     )
 
 
@@ -65,7 +72,7 @@ def get_chat_service() -> ChatService:
     settings = get_settings()
     return ChatService(
         retrieval_service=get_retrieval_service(),
-        reranker=SimpleReranker(),
+        reranker=CrossEncoderReranker(model_name=settings.reranker_model),
         generation_service=get_generation_service(),
         guardrails=get_guardrails(),
         max_context_chars=settings.max_context_chars,
@@ -104,6 +111,29 @@ def get_health_status() -> dict:
         "indexed_chunks": count,
         "known_sources": _load_known_sources(settings.data_raw_dir),
         "last_ingest_at": _get_last_ingest_at(settings.data_processed_dir),
+    }
+
+
+def get_readiness_status() -> dict:
+    settings = get_settings()
+    health = get_health_status()
+    provider = settings.llm_provider.lower()
+    provider_key_configured = bool(settings.groq_api_key) if provider == "groq" else bool(settings.gemini_api_key)
+    checks = {
+        "llm_provider_supported": provider in {"gemini", "groq"},
+        "llm_api_key_configured": provider_key_configured,
+        "chat_api_key_configured": bool(settings.chat_api_key),
+        "ingest_api_key_configured": bool(settings.ingest_api_key),
+        "index_populated": int(health.get("indexed_chunks") or 0) > 0,
+        "vector_store_healthy": health.get("status") == "ok",
+    }
+    ready = all(checks.values())
+    return {
+        "status": "ready" if ready else "not_ready",
+        "ready": ready,
+        "llm_provider": provider,
+        "checks": checks,
+        "health": health,
     }
 
 

@@ -1,33 +1,180 @@
 import logging
 import re
+from typing import Protocol
 
 from app.generation.context_builder import ContextPackage, build_context
 from app.generation.prompts import SYSTEM_PROMPT
 from app.guardrails.rules import GuardrailDecision, GuardrailEngine
 from app.models.chat import ChatResponse, ConfidenceLevel, GuardrailStatus
 from app.models.source import SourceChunk, SourceResult
-from app.ranking.reranker import SimpleReranker
 from app.retrieval.search import RetrievalService
 
 logger = logging.getLogger(__name__)
 
 CITATION_PATTERN = re.compile(r"\[(S\d+)\]")
+SENTENCE_PATTERN = re.compile(r"[^.!?\n]+[.!?]?")
+STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "with",
+}
+
+
+class Reranker(Protocol):
+    def rerank(self, query: str, chunks: list[SourceChunk], limit: int) -> list[SourceChunk]: ...
+
+
+class GroundingValidator:
+    def validate(self, answer: str, context_package: ContextPackage) -> GuardrailDecision:
+        if not context_package.chunks or not context_package.context_text.strip():
+            return GuardrailDecision(
+                status=GuardrailStatus.INSUFFICIENT_CONTEXT,
+                message=(
+                    "I do not have enough retrieved evidence to answer this reliably from the indexed sources. "
+                    "This is not legal or compliance advice."
+                ),
+                detection_flags=["empty_context"],
+            )
+
+        citation_labels = set(CITATION_PATTERN.findall(answer))
+        allowed_labels = {chunk.label for chunk in context_package.chunks if chunk.label}
+        if not citation_labels:
+            return self._unsupported("The generated answer did not cite retrieved evidence.", "missing_citation")
+        if citation_labels - allowed_labels:
+            return self._unsupported("The generated answer cited sources outside the retrieved context.", "invalid_citation")
+
+        label_to_text = {chunk.label: chunk.text.lower() for chunk in context_package.chunks if chunk.label}
+        checked_claims = 0
+        supported_claims = 0
+        uncited_claims = 0
+        for sentence in self._claim_sentences(answer):
+            sentence_labels = CITATION_PATTERN.findall(sentence)
+            if not sentence_labels:
+                uncited_claims += 1
+                continue
+            cited_text = " ".join(label_to_text.get(label, "") for label in sentence_labels)
+            checked_claims += 1
+            if self._sentence_supported(sentence, cited_text):
+                supported_claims += 1
+
+        if checked_claims == 0:
+            return self._unsupported("No cited factual claims could be checked against retrieved evidence.", "missing_citation")
+
+        support_ratio = supported_claims / checked_claims
+        if support_ratio < 0.25:
+            return self._unsupported(
+                "The generated answer was not sufficiently supported by the cited retrieved chunks.",
+                "unsupported_claim",
+            )
+        if uncited_claims > supported_claims:
+            return self._unsupported("Too many factual claims lacked citations to retrieved evidence.", "uncited_claim")
+
+        return GuardrailDecision(status=GuardrailStatus.OK, message="", detection_flags=[])
+
+    def citation_precision(self, answer: str, context_package: ContextPackage) -> float:
+        labels = CITATION_PATTERN.findall(answer)
+        if not labels:
+            return 0.0
+        allowed_labels = {chunk.label for chunk in context_package.chunks if chunk.label}
+        valid = sum(1 for label in labels if label in allowed_labels)
+        return round(valid / len(labels), 4)
+
+    def faithfulness_score(self, answer: str, context_package: ContextPackage) -> float:
+        sentences = self._claim_sentences(answer)
+        if not sentences:
+            return 0.0
+        label_to_text = {chunk.label: chunk.text.lower() for chunk in context_package.chunks if chunk.label}
+        supported = 0
+        for sentence in sentences:
+            cited_text = " ".join(label_to_text.get(label, "") for label in CITATION_PATTERN.findall(sentence))
+            if self._sentence_supported(sentence, cited_text):
+                supported += 1
+        return round(supported / len(sentences), 4)
+
+    def _unsupported(self, message: str, flag: str) -> GuardrailDecision:
+        return GuardrailDecision(
+            status=GuardrailStatus.INSUFFICIENT_CONTEXT,
+            message=f"{message} I cannot answer reliably from the retrieved context. This is not legal or compliance advice.",
+            detection_flags=[flag],
+        )
+
+    def _claim_sentences(self, answer: str) -> list[str]:
+        sentences: list[str] = []
+        protected_answer = re.sub(r"(?<=\d)\.(?=\d)", "<DOT>", answer)
+        for match in SENTENCE_PATTERN.finditer(protected_answer):
+            sentence = match.group(0).replace("<DOT>", ".").strip()
+            if not sentence:
+                continue
+            lowered = sentence.lower()
+            if "not legal or compliance advice" in lowered:
+                continue
+            if "provided context" in lowered or "retrieved context" in lowered:
+                continue
+            if lowered.startswith("it is essential to consult") or lowered.startswith("consult the actual"):
+                continue
+            sentences.append(sentence)
+        return sentences
+
+    def _sentence_supported(self, sentence: str, support_text: str) -> bool:
+        tokens = self._content_tokens(CITATION_PATTERN.sub("", sentence))
+        if not tokens:
+            return True
+        support_tokens = set(self._content_tokens(support_text))
+        overlap = sum(1 for token in tokens if token in support_tokens)
+        return overlap >= min(3, len(tokens)) or (overlap / len(tokens)) >= 0.25
+
+    def _content_tokens(self, text: str) -> list[str]:
+        return [
+            token
+            for token in re.findall(r"[a-z0-9][a-z0-9-]{2,}", text.lower())
+            if token not in STOP_WORDS
+        ]
 
 
 class GenerationService:
-    def __init__(self, api_key: str, model: str, base_url: str = "") -> None:
+    def __init__(self, api_key: str, model: str, base_url: str = "", provider: str = "gemini") -> None:
         self.model = model
+        self.provider = provider.lower()
+        self.base_url = base_url
         if api_key:
-            import google.generativeai as genai
+            if self.provider == "groq":
+                from openai import OpenAI
 
-            genai.configure(api_key=api_key)
-            self.client = genai.GenerativeModel(model)
+                self.client = OpenAI(api_key=api_key, base_url=base_url)
+            elif self.provider == "gemini":
+                import google.generativeai as genai
+
+                genai.configure(api_key=api_key)
+                self.client = genai.GenerativeModel(model)
+            else:
+                raise ValueError(f"Unsupported LLM provider: {provider}")
         else:
             self.client = None
 
     def generate(self, question: str, context_package: ContextPackage) -> str:
+        if not context_package.chunks or not context_package.context_text.strip():
+            raise ValueError("Cannot generate an answer without retrieved context.")
         if not self.client:
-            raise RuntimeError("GEMINI_API_KEY is required for chat generation.")
+            required_key = "GROQ_API_KEY" if self.provider == "groq" else "GEMINI_API_KEY"
+            raise RuntimeError(f"{required_key} is required for chat generation.")
         logger.info("Generating answer from retrieved context (%s chars)", len(context_package.context_text))
         prompt = (
             f"{SYSTEM_PROMPT}\n\n"
@@ -35,8 +182,22 @@ class GenerationService:
             f"Retrieved context:\n{context_package.context_text}\n\n"
             f"Allowed citations: {', '.join(chunk.label or '' for chunk in context_package.chunks)}"
         )
-        response = self.client.generate_content(prompt, stream=False)
-        answer = response.text if response and hasattr(response, 'text') else ""
+        if self.provider == "groq":
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                )
+            except Exception as exc:
+                raise RuntimeError("LLM provider request failed.") from exc
+            answer = response.choices[0].message.content if response.choices else ""
+        else:
+            try:
+                response = self.client.generate_content(prompt, stream=False)
+            except Exception as exc:
+                raise RuntimeError("LLM provider request failed.") from exc
+            answer = response.text if response and hasattr(response, "text") else ""
         return self._sanitize_citations(answer.strip(), context_package)
 
     def _sanitize_citations(self, answer: str, context_package: ContextPackage) -> str:
@@ -56,11 +217,12 @@ class ChatService:
     def __init__(
         self,
         retrieval_service: RetrievalService,
-        reranker: SimpleReranker,
+        reranker: Reranker,
         generation_service: GenerationService,
         guardrails: GuardrailEngine,
         max_context_chars: int,
         rerank_k: int,
+        grounding_validator: GroundingValidator | None = None,
     ) -> None:
         self.retrieval_service = retrieval_service
         self.reranker = reranker
@@ -68,6 +230,7 @@ class ChatService:
         self.guardrails = guardrails
         self.max_context_chars = max_context_chars
         self.rerank_k = rerank_k
+        self.grounding_validator = grounding_validator or GroundingValidator()
 
     def answer_question(self, question: str, filters: dict[str, str] | None = None) -> ChatResponse:
         response, _ = self.answer_question_with_trace(question=question, filters=filters)
@@ -80,8 +243,16 @@ class ChatService:
             rewritten_question = self.retrieval_service.rewrite_question(question)
         else:
             rewritten_question = question
+        input_decision = self.guardrails.evaluate_input(question)
+        if input_decision:
+            response = self._guardrailed_response(input_decision, [])
+            return response, {
+                "rewritten_query": rewritten_question,
+                "top_retrieval_count": 0,
+                "detection_flags": input_decision.detection_flags,
+            }
         retrieved = self.retrieval_service.retrieve(question, filters=filters)
-        reranked = self.reranker.rerank(retrieved, limit=self.rerank_k)
+        reranked = self.reranker.rerank(query=rewritten_question, chunks=retrieved, limit=self.rerank_k)
         decision = self.guardrails.evaluate(question, reranked)
         context_package = build_context(reranked, max_chars=self.max_context_chars)
 
@@ -100,8 +271,31 @@ class ChatService:
                 "top_retrieval_count": len(retrieved),
                 "detection_flags": decision.detection_flags,
             }
+        if not context_package.chunks:
+            empty_context = GuardrailDecision(
+                status=GuardrailStatus.INSUFFICIENT_CONTEXT,
+                message=(
+                    "I do not have enough retrieved evidence to answer this reliably from the indexed sources. "
+                    "This is not legal or compliance advice."
+                ),
+                detection_flags=["empty_context"],
+            )
+            response = self._guardrailed_response(empty_context, context_package.chunks)
+            return response, {
+                "rewritten_query": rewritten_question,
+                "top_retrieval_count": len(retrieved),
+                "detection_flags": empty_context.detection_flags,
+            }
 
         answer = self.generation_service.generate(question=question, context_package=context_package)
+        grounding_decision = self.grounding_validator.validate(answer, context_package)
+        if grounding_decision.status != GuardrailStatus.OK:
+            response = self._guardrailed_response(grounding_decision, context_package.chunks)
+            return response, {
+                "rewritten_query": rewritten_question,
+                "top_retrieval_count": len(retrieved),
+                "detection_flags": grounding_decision.detection_flags,
+            }
         response = ChatResponse(
             answer=self._normalize_answer(answer),
             sources=self._to_sources(context_package.chunks),

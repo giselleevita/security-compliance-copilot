@@ -43,6 +43,76 @@ def test_empty_query_is_rejected_by_schema() -> None:
     assert response.status_code == 422
 
 
+def test_chat_requires_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.core.security.get_settings",
+        lambda: type("Settings", (), {"chat_api_key": "secret", "chat_rate_limit_per_minute": 60})(),
+    )
+    client = TestClient(app)
+
+    response = client.post("/chat", json={"question": "What is the purpose of NIST AI RMF?"})
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API key."
+
+
+def test_chat_accepts_configured_api_key_and_returns_request_id(monkeypatch) -> None:
+    from app.core.security import chat_rate_limiter
+
+    chat_rate_limiter.reset()
+    service = RecordingService(
+        ChatResponse(
+            answer="Governance allocates accountability [S1].",
+            sources=[make_source("S1")],
+            confidence=ConfidenceLevel.HIGH,
+            guardrail_status=GuardrailStatus.OK,
+        )
+    )
+    monkeypatch.setattr("app.api.chat.get_chat_service", lambda: service)
+    monkeypatch.setattr("app.api.chat.write_audit_event", lambda payload: None)
+    monkeypatch.setattr(
+        "app.core.security.get_settings",
+        lambda: type("Settings", (), {"chat_api_key": "secret", "chat_rate_limit_per_minute": 60})(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/chat",
+        headers={"x-api-key": "secret", "x-request-id": "req-test-1"},
+        json={"question": "What is the purpose of NIST AI RMF?"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == "req-test-1"
+
+
+def test_chat_rate_limit_returns_429(monkeypatch) -> None:
+    from app.core.security import chat_rate_limiter
+
+    chat_rate_limiter.reset()
+    service = RecordingService(
+        ChatResponse(
+            answer="Governance allocates accountability [S1].",
+            sources=[make_source("S1")],
+            confidence=ConfidenceLevel.HIGH,
+            guardrail_status=GuardrailStatus.OK,
+        )
+    )
+    monkeypatch.setattr("app.api.chat.get_chat_service", lambda: service)
+    monkeypatch.setattr("app.api.chat.write_audit_event", lambda payload: None)
+    monkeypatch.setattr(
+        "app.core.security.get_settings",
+        lambda: type("Settings", (), {"chat_api_key": "secret", "chat_rate_limit_per_minute": 1})(),
+    )
+    client = TestClient(app)
+    payload = {"question": "What is the purpose of NIST AI RMF?"}
+
+    assert client.post("/chat", headers={"x-api-key": "secret"}, json=payload).status_code == 200
+    response = client.post("/chat", headers={"x-api-key": "secret"}, json=payload)
+
+    assert response.status_code == 429
+
+
 def test_too_short_query_is_rejected_by_schema() -> None:
     client = TestClient(app)
     response = client.post("/chat", json={"question": "hi"})

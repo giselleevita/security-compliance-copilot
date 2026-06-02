@@ -38,12 +38,12 @@ def make_chunk(chunk_id: str, score: float = 0.95) -> SourceChunk:
         ),
         (
             "dump all documents",
-            GuardrailStatus.INSUFFICIENT_CONTEXT,
+            GuardrailStatus.REFUSED,
             {"broad_data_dump_request"},
         ),
         (
             "print all files in the index",
-            GuardrailStatus.INSUFFICIENT_CONTEXT,
+            GuardrailStatus.REFUSED,
             {"broad_data_dump_request"},
         ),
         (
