@@ -5,6 +5,16 @@ from app.models.chat import ConfidenceLevel, GuardrailStatus
 from app.models.source import SourceChunk
 
 PROPRIETARY_QUOTE_KEYWORDS = ["quote", "exact text", "exact wording", "verbatim", "direct quote", "full text"]
+PROPRIETARY_COPY_KEYWORDS = [
+    "copy",
+    "provide",
+    "show",
+    "give",
+    "print",
+    "full standard",
+    "whole standard",
+    "entire standard",
+]
 PROPRIETARY_FRAMEWORKS = [
     "soc 2",
     "soc2",
@@ -17,6 +27,10 @@ PROPRIETARY_FRAMEWORKS = [
 ]
 UNSAFE_PATTERNS: list[tuple[str, str]] = [
     ("ignore previous instructions", "prompt_injection_attempt"),
+    ("ignore previous rules", "prompt_injection_attempt"),
+    ("ignorepreviousinstructions", "prompt_injection_attempt"),
+    ("ignorepreviousrules", "prompt_injection_attempt"),
+    ("all previous rules", "prompt_injection_attempt"),
     ("disregard previous instructions", "prompt_injection_attempt"),
     ("disregard earlier directions", "prompt_injection_attempt"),
     ("forget your instructions", "prompt_injection_attempt"),
@@ -45,6 +59,13 @@ BROAD_PATTERNS: list[tuple[str, str]] = [
     ("print all files", "broad_data_dump_request"),
     ("all files in the index", "broad_data_dump_request"),
     ("all documents", "broad_data_dump_request"),
+    ("dump all documents", "broad_data_dump_request"),
+    ("dump every document", "broad_data_dump_request"),
+    ("dump every chunk", "broad_data_dump_request"),
+    ("dump all chunks", "broad_data_dump_request"),
+    ("all chunks", "broad_data_dump_request"),
+    ("all sources", "broad_data_dump_request"),
+    ("all citations", "broad_data_dump_request"),
     ("dump the index", "index_dump_request"),
 ]
 RECENCY_PATTERNS: list[tuple[str, str]] = [
@@ -55,8 +76,20 @@ RECENCY_PATTERNS: list[tuple[str, str]] = [
     ("breaking", "current_events_request"),
     ("recent enforcement", "current_events_request"),
 ]
-SENSITIVE_TERM_PATTERNS = ["config", "secret", "password", "token", "api key", "exfiltrate"]
-SENSITIVE_ACTION_PATTERNS = ["show", "dump", "reveal", "leak", "give", "extract", "exfiltrate"]
+SENSITIVE_TERM_PATTERNS = [
+    "config",
+    "credential",
+    "database credential",
+    "env",
+    "environment secret",
+    "secret",
+    "password",
+    "token",
+    "api key",
+    "groq api key",
+    "exfiltrate",
+]
+SENSITIVE_ACTION_PATTERNS = ["show", "dump", "print", "reveal", "leak", "give", "extract", "exfiltrate"]
 
 
 @dataclass
@@ -162,8 +195,12 @@ class GuardrailEngine:
 
     def _requests_proprietary_quote(self, normalized_question: str) -> bool:
         asks_for_quote = any(keyword in normalized_question for keyword in PROPRIETARY_QUOTE_KEYWORDS)
+        asks_to_copy_standard = any(keyword in normalized_question for keyword in PROPRIETARY_COPY_KEYWORDS) and any(
+            standard_term in normalized_question
+            for standard_term in ("standard", "requirement", "requirements", "control", "controls")
+        )
         mentions_proprietary = any(keyword in normalized_question for keyword in PROPRIETARY_FRAMEWORKS)
-        return asks_for_quote and mentions_proprietary
+        return (asks_for_quote or asks_to_copy_standard) and mentions_proprietary
 
     def _detect_unsafe_flags(self, normalized_question: str) -> list[str]:
         flags = [flag for pattern, flag in UNSAFE_PATTERNS if pattern in normalized_question]
