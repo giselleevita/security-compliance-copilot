@@ -35,6 +35,11 @@ class FakeCrossEncoder:
         return [0.1 if "generic" in text else 0.9 for _, text in pairs]
 
 
+class FailingCrossEncoder:
+    def predict(self, pairs):
+        raise RuntimeError("model unavailable")
+
+
 def test_cross_encoder_reranker_uses_query_document_scores() -> None:
     reranker = CrossEncoderReranker(model_name="unused", model=FakeCrossEncoder())
     chunks = [
@@ -69,6 +74,43 @@ def test_cross_encoder_reranker_uses_query_document_scores() -> None:
     reranked = reranker.rerank(query="framework guidance", chunks=chunks, limit=2)
     assert reranked[0].chunk_id == "2"
     assert reranked[0].rerank_score == 0.9
+
+
+def test_cross_encoder_reranker_falls_back_to_metadata_boosting() -> None:
+    reranker = CrossEncoderReranker(model_name="unused", model=FailingCrossEncoder())
+    chunks = [
+        SourceChunk(
+            chunk_id="1",
+            text="generic",
+            source_id="s1",
+            title="Doc 1",
+            url="a",
+            publisher="Publisher A",
+            source_type="txt",
+            framework="general",
+            section="Introduction",
+            chunk_index=0,
+            score=0.55,
+        ),
+        SourceChunk(
+            chunk_id="2",
+            text="framework",
+            source_id="s2",
+            title="Doc 2",
+            url="b",
+            publisher="NIST",
+            source_type="md",
+            framework="NIST",
+            section="Protect",
+            chunk_index=1,
+            score=0.53,
+        ),
+    ]
+
+    reranked = reranker.rerank(query="framework guidance", chunks=chunks, limit=2)
+
+    assert reranked[0].chunk_id == "2"
+    assert reranked[0].rerank_score is not None
 
 
 def test_metadata_boosting_reranker_is_explicit_fallback() -> None:
