@@ -31,7 +31,7 @@ def startup_event() -> None:
     logger.info("Starting up: pre-loading embedding model and vector store")
     try:
         logger.info("Pre-loading embedding model...")
-        embedding_client = get_embedding_client()
+        get_embedding_client()
         logger.info("Embedding model loaded successfully")
 
         logger.info("Checking vector store...")
@@ -52,7 +52,7 @@ def startup_event() -> None:
             logger.info("Vector store already populated, skipping ingestion")
 
         logger.info("Startup complete, application ready")
-    except Exception as e:
+    except Exception:
         logger.exception("Startup initialization failed")
         raise
 
