@@ -52,7 +52,7 @@ class IngestionPipeline:
         source_url = str(sidecar.get("url") or path)
         publisher = str(sidecar.get("publisher") or "unknown")
         source_type = str(sidecar.get("source_type") or path.suffix.lower().lstrip("."))
-        source_id = hashlib.sha1(str(path).encode("utf-8")).hexdigest()
+        source_id = hashlib.sha256(str(path).encode("utf-8")).hexdigest()
 
         chunks = chunk_text(cleaned, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
         if not chunks:
