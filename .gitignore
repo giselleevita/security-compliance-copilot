@@ -38,6 +38,11 @@ htmlcov/
 logs/
 *.log
 
+# Generated retrieval indexes and local corpora
+data/chroma/
+data/raw/
+data/processed/
+
 # Build/output
 output/
 tmp/
