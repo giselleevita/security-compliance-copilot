@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in the Security & Compliance Copilot. This is a portfolio project showcasing production-oriented RAG design, security controls, and AI engineering practices.
+Thank you for your interest in the Security & Compliance Copilot. Contributions should preserve its retrieval-grounded answers, explicit guardrails, citation checks, and auditable behavior.
 
 ## Setup
 
@@ -129,16 +129,12 @@ Every `/chat` request logs an audit event in `logs/audit.jsonl`:
 
 This supports compliance audits, debugging, and behavior analysis.
 
-## Portfolio Use
+## Design Priorities
 
-This project demonstrates:
-
-- **RAG Engineering**: Retrieval, reranking, context building, citation handling
-- **Security**: Input validation, guardrails, output sanitization, audit trails
-- **AI Engineering**: Prompt design, retrieval-grounded generation, evaluation
-- **Production Practices**: Error handling, logging, configuration management, testing
-
-It's designed to be understandable to hiring managers and suitable for security, AI, and cloud roles.
+- Keep retrieval and citation behavior measurable.
+- Fail closed when evidence is insufficient.
+- Preserve auditability without logging sensitive content.
+- Add tests for behavioral and security changes.
 
 ## Questions?
 

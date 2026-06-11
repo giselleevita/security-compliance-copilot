@@ -4,9 +4,9 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Security & Compliance Copilot is a production-minded RAG assistant for security and compliance guidance. It answers questions from a tightly curated corpus of official public NIST and CISA material, returns grounded answers with citations, and fails closed when a request is unsafe or the evidence is weak.
+Security & Compliance Copilot is a RAG reference implementation for security and compliance guidance. It answers questions from a tightly curated corpus of official public NIST and CISA material, returns grounded answers with citations, and fails closed when a request is unsafe or the evidence is weak.
 
-Built to demonstrate end-to-end AI engineering depth across retrieval, reranking, guardrails, evaluation, and audit — with a focus on production-ready behavior over demo-quality output.
+The implementation focuses on reviewable behavior across retrieval, reranking, guardrails, evaluation, and audit.
 
 ## Why This Project
 

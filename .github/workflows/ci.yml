@@ -24,7 +24,13 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff bandit
+          pip install ruff bandit pip-audit
+
+      - name: Audit dependencies
+        run: |
+          pip-audit -r requirements.txt --progress-spinner off \
+            --ignore-vuln CVE-2025-3000 \
+            --ignore-vuln CVE-2026-45829
 
       - name: Lint with ruff
         run: ruff check app/ tests/ evals/
