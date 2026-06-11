@@ -29,8 +29,7 @@ jobs:
       - name: Audit dependencies
         run: |
           pip-audit -r requirements.txt --progress-spinner off \
-            --ignore-vuln CVE-2025-3000 \
-            --ignore-vuln CVE-2026-45829
+            --ignore-vuln CVE-2025-3000
 
       - name: Lint with ruff
         run: ruff check app/ tests/ evals/
