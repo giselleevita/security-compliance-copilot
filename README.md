@@ -8,6 +8,20 @@ Security & Compliance Copilot is a RAG reference implementation for security and
 
 The implementation focuses on reviewable behavior across retrieval, reranking, guardrails, evaluation, and audit.
 
+## Reviewer Quick Start
+
+For a fast technical review:
+
+1. Read [`docs/architecture.md`](docs/architecture.md) for component and trust boundaries.
+2. Run `pytest tests/ -v --tb=short` to verify retrieval, guardrail, citation, and API behavior.
+3. Run the offline evaluation suite to inspect refusal and retrieval metrics.
+4. Review `SECURITY.md` and `SECURITY_AND_COMPLIANCE.md` for dependency exceptions,
+   known limitations, and control mapping.
+
+The main engineering signal is controlled RAG behavior: a constrained corpus,
+retrieval-grounded responses, stable citations, fail-closed guardrails, audit
+events, and regression evaluation.
+
 ## Why This Project
 
 Most demo RAG apps optimize for answer quality first. This project is intentionally built around engineering controls first:
