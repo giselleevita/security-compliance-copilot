@@ -4,7 +4,7 @@ chromadb==0.6.3
 openai==1.99.9
 google-generativeai>=0.7.0
 sentence-transformers>=3.0.0
-pydantic==2.11.7
+pydantic==2.13.4
 pydantic-settings==2.10.1
 python-dotenv==1.2.2
 jinja2==3.1.6
