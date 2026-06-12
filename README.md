@@ -8,6 +8,8 @@ Security & Compliance Copilot is a RAG reference implementation for security and
 
 The implementation focuses on reviewable behavior across retrieval, reranking, guardrails, evaluation, and audit.
 
+![Security & Compliance Copilot interface](docs/screenshots/copilot-ui.png)
+
 ## Reviewer Quick Start
 
 For a fast technical review:
