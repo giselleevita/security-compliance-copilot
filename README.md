@@ -6,6 +6,8 @@
 
 Security & Compliance Copilot is a RAG reference implementation for security and compliance guidance. It answers questions from a tightly curated corpus of official public NIST and CISA material, returns grounded answers with citations, and fails closed when a request is unsafe or the evidence is weak.
 
+> **This project does not enforce runtime security policies.** It provides grounded governance assistance using cited retrieval and offline evaluation. Runtime enforcement belongs in [agent-security-gate](https://github.com/giselleevita/agent-security-gate).
+
 The implementation focuses on reviewable behavior across retrieval, reranking, guardrails, evaluation, and audit.
 
 ![Security & Compliance Copilot interface](docs/screenshots/copilot-ui.png)
