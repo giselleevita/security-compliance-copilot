@@ -24,6 +24,26 @@ The main engineering signal is controlled RAG behavior: a constrained corpus,
 retrieval-grounded responses, stable citations, fail-closed guardrails, audit
 events, and regression evaluation.
 
+## Offline evaluation results
+
+Run the regression suite (no live LLM API required for retrieval/guardrail checks when using offline fixtures):
+
+```bash
+python evals/run_eval.py
+```
+
+| Category | Cases | What it measures |
+|---|---:|---|
+| `safe_answer` | 2+ | Grounded answers with citation precision |
+| `retrieval_precision` | 2+ | MRR, nDCG@5, retrieval hit rate |
+| `refusal` | 4+ | Fail-closed on unsafe / proprietary requests |
+| `injection` | 4+ | Prompt injection and jailbreak resistance |
+| `privacy` | 2+ | PII / sensitive data handling |
+
+**Vector store:** Chroma (local demo) — production path documented for OpenAI embeddings; pgvector migration planned for multi-tenant deployments.
+
+**CI:** Eval thresholds enforced in `.github/workflows/ci.yml` — see `evals/questions.json` for per-case gates (`min_citation_precision`, `min_faithfulness`, `expected_guardrail_status`).
+
 ## Why This Project
 
 Most demo RAG apps optimize for answer quality first. This project is intentionally built around engineering controls first:
