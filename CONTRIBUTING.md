@@ -57,10 +57,10 @@ This creates `data/chroma/` with embedded chunks (~1.4GB of documents).
 
 **Start the API server**:
 ```bash
-uvicorn app.main:app --reload --port 8001
+uvicorn app.main:app --reload --port 8000
 ```
 
-Open: http://127.0.0.1:8001/
+Open: http://127.0.0.1:8000/
 
 **API endpoints**:
 - `GET /health` — Vector store status and source coverage
@@ -69,7 +69,7 @@ Open: http://127.0.0.1:8001/
 
 Example chat request:
 ```bash
-curl -X POST http://127.0.0.1:8001/chat \
+curl -X POST http://127.0.0.1:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"question": "What does the Govern function in NIST AI RMF cover?"}'
 ```

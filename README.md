@@ -197,13 +197,13 @@ python3.11 scripts/ingest.py
 Start the API and minimal frontend:
 
 ```bash
-uvicorn app.main:app --reload --port 8001
+uvicorn app.main:app --reload --port 8000
 ```
 
 Open:
 
 ```text
-http://127.0.0.1:8001/
+http://127.0.0.1:8000/
 ```
 
 Run the eval set:
@@ -223,7 +223,7 @@ Returns index status, source-framework coverage, and last ingest time.
 Check it with:
 
 ```bash
-curl -s http://127.0.0.1:8001/health
+curl -s http://127.0.0.1:8000/health
 ```
 
 Example shape:
