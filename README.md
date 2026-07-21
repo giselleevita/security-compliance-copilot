@@ -12,20 +12,6 @@ The implementation focuses on reviewable behavior across retrieval, reranking, g
 
 ![Security & Compliance Copilot interface](docs/screenshots/copilot-ui.png)
 
-## Reviewer Quick Start
-
-For a fast technical review:
-
-1. Read [`docs/architecture.md`](docs/architecture.md) for component and trust boundaries.
-2. Run `pytest tests/ -v --tb=short` to verify retrieval, guardrail, citation, and API behavior.
-3. Run the offline evaluation suite to inspect refusal and retrieval metrics.
-4. Review `SECURITY.md` and `SECURITY_AND_COMPLIANCE.md` for dependency exceptions,
-   known limitations, and control mapping.
-
-The main engineering signal is controlled RAG behavior: a constrained corpus,
-retrieval-grounded responses, stable citations, fail-closed guardrails, audit
-events, and regression evaluation.
-
 ## Offline evaluation results
 
 Run the regression suite (no live LLM API required for retrieval/guardrail checks when using offline fixtures):
@@ -340,6 +326,20 @@ Eval categories include:
 - `out_of_scope`
 
 Tracked fields include retrieval hit rate, MRR, nDCG@5, citation precision, faithfulness, refusal accuracy, guardrail status, source frameworks, and answer length.
+
+## Reviewer Quick Start
+
+For a fast technical review:
+
+1. Read [`docs/architecture.md`](docs/architecture.md) for component and trust boundaries.
+2. Run `pytest tests/ -v --tb=short` to verify retrieval, guardrail, citation, and API behavior.
+3. Run the offline evaluation suite to inspect refusal and retrieval metrics.
+4. Review `SECURITY.md` and `SECURITY_AND_COMPLIANCE.md` for dependency exceptions,
+   known limitations, and control mapping.
+
+The main engineering signal is controlled RAG behavior: a constrained corpus,
+retrieval-grounded responses, stable citations, fail-closed guardrails, audit
+events, and regression evaluation.
 
 ## Development
 
