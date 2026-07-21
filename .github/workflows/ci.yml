@@ -65,8 +65,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python evals/run_eval.py
 
-      - name: Upload benchmark results
+      - name: Upload eval results
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-results
-          path: evals/benchmark_results.json
+          name: eval-results
+          path: evals/results.json
