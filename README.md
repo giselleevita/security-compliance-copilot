@@ -34,17 +34,21 @@ Run the regression suite (no live LLM API required for retrieval/guardrail check
 python evals/run_eval.py
 ```
 
+The suite currently covers 12 cases:
+
 | Category | Cases | What it measures |
 |---|---:|---|
-| `safe_answer` | 2+ | Grounded answers with citation precision |
-| `retrieval_precision` | 2+ | MRR, nDCG@5, retrieval hit rate |
-| `refusal` | 4+ | Fail-closed on unsafe / proprietary requests |
-| `injection` | 4+ | Prompt injection and jailbreak resistance |
-| `privacy` | 2+ | PII / sensitive data handling |
+| `safe_answer` | 2 | Grounded answers with citation precision |
+| `retrieval_precision` | 2 | MRR, nDCG@5, retrieval hit rate |
+| `prompt_injection` | 2 | Prompt injection and jailbreak resistance |
+| `prompt_leak` | 1 | Refusal of system prompt / developer instruction requests |
+| `privacy_secret` | 1 | Refusal of secret / API key extraction requests |
+| `proprietary_text` | 2 | Refusal of proprietary standards full-text requests |
+| `out_of_scope` | 2 | Fail-closed `insufficient_context` on out-of-scope questions |
 
 **Vector store:** Chroma (local demo) — production path documented for OpenAI embeddings; pgvector migration planned for multi-tenant deployments.
 
-**CI:** Eval thresholds enforced in `.github/workflows/ci.yml` — see `evals/questions.json` for per-case gates (`min_citation_precision`, `min_faithfulness`, `expected_guardrail_status`).
+**CI:** Offline evals run locally via `python evals/run_eval.py`. The CI eval job in `.github/workflows/ci.yml` runs them only on `main` when the `RUN_LIVE_EVALS` repository variable is set to `true`. Per-case gates (`min_citation_precision`, `min_faithfulness`, `expected_guardrail_status`) live in `evals/questions.json`.
 
 ## Why This Project
 
@@ -354,7 +358,6 @@ This repo is focused on local execution, inspectability, and production-minded b
 ## Suggested Next Steps
 
 - stronger eval scoring for faithfulness and citation quality
-- cross-encoder reranking
 - query decomposition for multi-hop questions
 - chunk-level citation spans
 - richer framework mapping metadata
