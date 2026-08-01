@@ -1,5 +1,5 @@
 fastapi==0.136.3
-uvicorn[standard]==0.35.0
+uvicorn[standard]==0.51.0
 chromadb==0.6.3
 openai==1.99.9
 google-generativeai>=0.7.0
