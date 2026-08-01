@@ -1,4 +1,4 @@
-fastapi==0.136.3
+fastapi==0.140.13
 uvicorn[standard]==0.35.0
 chromadb==0.6.3
 openai==1.99.9
