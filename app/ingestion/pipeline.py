@@ -7,7 +7,7 @@ from app.ingestion.chunker import chunk_text
 from app.ingestion.cleaning import clean_text, infer_framework, infer_title
 from app.ingestion.loaders import list_supported_files, load_sidecar_metadata, load_text_from_file
 from app.retrieval.embeddings import OpenAIEmbeddingClient
-from app.retrieval.vectorstore import ChromaVectorStore
+from app.retrieval.vectorstore import SqliteVectorStore
 
 
 @dataclass
@@ -21,7 +21,7 @@ class IngestionPipeline:
         self,
         raw_dir: Path,
         processed_dir: Path,
-        vector_store: ChromaVectorStore,
+        vector_store: SqliteVectorStore,
         embedding_client: OpenAIEmbeddingClient,
         chunk_size: int = 1200,
         chunk_overlap: int = 200,

@@ -3,7 +3,7 @@ import logging
 from app.models.source import SourceChunk
 from app.retrieval.embeddings import OpenAIEmbeddingClient
 from app.retrieval.query_rewriter import QueryRewriter
-from app.retrieval.vectorstore import ChromaVectorStore
+from app.retrieval.vectorstore import SqliteVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class RetrievalService:
     def __init__(
         self,
-        vector_store: ChromaVectorStore,
+        vector_store: SqliteVectorStore,
         embedding_client: OpenAIEmbeddingClient,
         top_k: int = 8,
         query_rewriter: QueryRewriter | None = None,

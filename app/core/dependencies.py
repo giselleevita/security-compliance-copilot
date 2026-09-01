@@ -12,15 +12,15 @@ from app.ingestion.pipeline import IngestionPipeline
 from app.ranking.reranker import CrossEncoderReranker
 from app.retrieval.embeddings import LocalEmbeddingClient
 from app.retrieval.search import RetrievalService
-from app.retrieval.vectorstore import ChromaVectorStore
+from app.retrieval.vectorstore import SqliteVectorStore
 
 logger = logging.getLogger(__name__)
 
 
 @lru_cache
-def get_vector_store() -> ChromaVectorStore:
+def get_vector_store() -> SqliteVectorStore:
     settings = get_settings()
-    return ChromaVectorStore(
+    return SqliteVectorStore(
         persist_directory=str(settings.chroma_dir),
         collection_name=settings.chroma_collection,
         raw_dir=str(settings.data_raw_dir),

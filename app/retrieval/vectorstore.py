@@ -1,5 +1,7 @@
 import json
 import logging
+import math
+import sqlite3
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -32,12 +34,23 @@ class SidecarMetadataStore:
         return {}
 
 
-class ChromaVectorStore:
+class SqliteVectorStore:
     def __init__(self, persist_directory: str, collection_name: str, raw_dir: str | None = None) -> None:
-        import chromadb
-
-        self.client = chromadb.PersistentClient(path=persist_directory)
-        self.collection = self.client.get_or_create_collection(name=collection_name)
+        directory = Path(persist_directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        self.database_path = directory / f"{collection_name}.sqlite3"
+        self.connection = sqlite3.connect(self.database_path)
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chunks (
+                id TEXT PRIMARY KEY,
+                document TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                embedding TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
         self.sidecar_store = SidecarMetadataStore(raw_dir=raw_dir)
 
     def upsert(
@@ -47,12 +60,22 @@ class ChromaVectorStore:
         metadatas: Sequence[dict],
         embeddings: Sequence[Sequence[float]],
     ) -> None:
-        self.collection.upsert(
-            ids=list(ids),
-            documents=list(documents),
-            metadatas=list(metadatas),
-            embeddings=[list(vector) for vector in embeddings],
-        )
+        rows = [
+            (chunk_id, document, json.dumps(metadata), json.dumps(list(embedding)))
+            for chunk_id, document, metadata, embedding in zip(ids, documents, metadatas, embeddings)
+        ]
+        with self.connection:
+            self.connection.executemany(
+                """
+                INSERT INTO chunks (id, document, metadata, embedding)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    document = excluded.document,
+                    metadata = excluded.metadata,
+                    embedding = excluded.embedding
+                """,
+                rows,
+            )
 
     def query(
         self,
@@ -60,20 +83,19 @@ class ChromaVectorStore:
         top_k: int,
         filters: dict[str, str] | None = None,
     ) -> list[SourceChunk]:
-        result = self.collection.query(
-            query_embeddings=[embedding],
-            n_results=top_k,
-            where=filters or None,
-        )
-        documents = result.get("documents", [[]])[0]
-        metadatas = result.get("metadatas", [[]])[0]
-        ids = result.get("ids", [[]])[0]
-        distances = result.get("distances", [[]])[0]
+        candidates: list[tuple[float, str, str, dict]] = []
+        for chunk_id, document, metadata_json, stored_embedding_json in self.connection.execute(
+            "SELECT id, document, metadata, embedding FROM chunks"
+        ):
+            metadata = json.loads(metadata_json)
+            if filters and any(str(metadata.get(key)) != str(value) for key, value in filters.items()):
+                continue
+            score = self._cosine_similarity(embedding, json.loads(stored_embedding_json))
+            candidates.append((score, chunk_id, document, metadata))
 
         chunks: list[SourceChunk] = []
-        for chunk_id, document, metadata, distance in zip(ids, documents, metadatas, distances):
+        for score, chunk_id, document, metadata in sorted(candidates, reverse=True)[:top_k]:
             merged_metadata = self._merge_metadata(metadata or {})
-            score = 1 / (1 + float(distance))
             chunks.append(
                 SourceChunk(
                     chunk_id=chunk_id,
@@ -91,7 +113,7 @@ class ChromaVectorStore:
             )
 
         logger.info(
-            "Retrieved %s chunks from Chroma (filters=%s, top_k=%s)",
+            "Retrieved %s chunks from SQLite (filters=%s, top_k=%s)",
             len(chunks),
             filters,
             top_k,
@@ -99,7 +121,19 @@ class ChromaVectorStore:
         return chunks
 
     def count(self) -> int:
-        return self.collection.count()
+        row = self.connection.execute("SELECT COUNT(*) FROM chunks").fetchone()
+        return int(row[0]) if row else 0
+
+    @staticmethod
+    def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
+        if len(left) != len(right) or not left:
+            return 0.0
+        dot = sum(a * b for a, b in zip(left, right))
+        left_norm = math.sqrt(sum(value * value for value in left))
+        right_norm = math.sqrt(sum(value * value for value in right))
+        if left_norm == 0 or right_norm == 0:
+            return 0.0
+        return dot / (left_norm * right_norm)
 
     def _merge_metadata(self, metadata: dict) -> dict:
         sidecar = self.sidecar_store.lookup(

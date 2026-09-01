@@ -37,7 +37,7 @@ flowchart LR
 
 ## Current Tradeoffs
 
-- Local Chroma storage favors inspectability over distributed scale.
+- Local SQLite vector storage favors inspectability and a small dependency surface over distributed scale.
 - JSONL audit logs are easy to review but should become structured centralized
   logging in a production service.
 - The project demonstrates controlled RAG behavior; it does not currently claim

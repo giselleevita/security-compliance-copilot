@@ -32,7 +32,7 @@ The suite currently covers 12 cases:
 | `proprietary_text` | 2 | Refusal of proprietary standards full-text requests |
 | `out_of_scope` | 2 | Fail-closed `insufficient_context` on out-of-scope questions |
 
-**Vector store:** Chroma (local demo) — production path documented for OpenAI embeddings; pgvector migration planned for multi-tenant deployments.
+**Vector store:** dependency-free SQLite store for the local reference implementation; pgvector remains the documented multi-tenant production path.
 
 **CI:** Offline evals run locally via `python evals/run_eval.py`. The CI eval job in `.github/workflows/ci.yml` runs them only on `main` when the `RUN_LIVE_EVALS` repository variable is set to `true`. Per-case gates (`min_citation_precision`, `min_faithfulness`, `expected_guardrail_status`) live in `evals/questions.json`.
 
@@ -108,7 +108,7 @@ The assistant does not use scraped private/internal documents and does not provi
 The application follows a simple retrieval-first chat flow:
 
 1. Fetch public corpus.
-2. Ingest, chunk, embed, and index into Chroma.
+2. Ingest, chunk, embed, and index into the local SQLite vector store.
 3. Rewrite and retrieve the most relevant chunks.
 4. Rerank and build a citation-aware context package.
 5. Run guardrails before answering.
@@ -176,7 +176,7 @@ Fetch the approved public corpus:
 python3.11 scripts/fetch_public_corpus.py
 ```
 
-Build or rebuild the Chroma index:
+Build or rebuild the local vector index:
 
 ```bash
 python3.11 scripts/ingest.py
